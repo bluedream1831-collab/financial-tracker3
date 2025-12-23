@@ -21,16 +21,19 @@ const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeEx
   const generateDiagnosis = async () => {
     setErrorDetail(null);
     
-    // 檢查 API KEY 是否存在且不是字串 "undefined"
+    // 讀取環境變數，並檢查是否為有效字串
+    // 在 Vite 或其他建構環境中，process.env.API_KEY 可能會被替換為字串
     const apiKey = process.env.API_KEY;
-    if (!apiKey || apiKey === 'undefined' || apiKey === '') {
-      setReport("尚未偵測到 API_KEY。");
-      setErrorDetail("請在 Vercel 後台 Settings > Environment Variables 新增 API_KEY，並務必重新部署 (Redeploy)。");
+    
+    if (!apiKey || apiKey === 'undefined' || apiKey === '' || apiKey === 'null') {
+      setReport("尚未偵測到有效金鑰");
+      setErrorDetail("請在 Vercel 後台設定 API_KEY 並點擊 Redeploy。若是本地開發，請確認環境變數已載入。");
       return;
     }
 
     setLoading(true);
     try {
+      // 規範要求：每次呼叫前實例化以確保取得最新 Key
       const ai = new GoogleGenAI({ apiKey: apiKey });
       
       const prompt = `
@@ -60,27 +63,34 @@ const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeEx
         請使用繁體中文，格式請多用列表，避免冗長段落。
       `;
 
-      // 使用 gemini-3-flash-preview 作為預設穩定模型
+      // 使用 gemini-flash-latest 模型，具有較高的區域相容性與穩定性，可避免部分 404 錯誤
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-flash-latest',
         contents: prompt,
       });
 
-      setReport(response.text || "報告內容為空，請稍後重試。");
+      if (response && response.text) {
+        setReport(response.text);
+      } else {
+        throw new Error("API 回傳內容為空");
+      }
     } catch (error: any) {
-      console.error("Gemini API Full Error:", error);
+      console.error("Gemini API Error Detail:", error);
       const msg = error.message || String(error);
       
-      setReport("AI 診斷失敗");
+      setReport("診斷連線失敗");
       
-      if (msg.includes("API_KEY_INVALID") || msg.includes("403") || msg.includes("401")) {
-        setErrorDetail("API Key 無效或權限遭拒。請確認金鑰字串正確（開頭通常為 AIza...），且沒有包含多餘的引號或空白。");
-      } else if (msg.includes("model not found") || msg.includes("404")) {
-        setErrorDetail("找不到指定模型。這可能是因為您的金鑰所在區域尚不支援此模型。");
+      if (msg.includes("404") || msg.includes("not found")) {
+        setErrorDetail("模型不存在 (404)。這代表 API Key 尚未開通該模型權限，或該區域無法存取。");
+      } else if (msg.includes("403") || msg.includes("permission") || msg.includes("API_KEY_INVALID")) {
+        setErrorDetail("權限遭拒 (403)。請檢查 Vercel 上的 API_KEY 是否正確，且無多餘引號。");
+      } else if (msg.includes("429") || msg.includes("quota")) {
+        setErrorDetail("達到存取上限 (429)。請稍後再試。");
       } else {
-        setErrorDetail(`具體錯誤：${msg.slice(0, 100)}`);
+        setErrorDetail(`錯誤訊息：${msg.slice(0, 100)}...`);
       }
 
+      // 如果有 aistudio 工具，嘗試提示重新設定
       if (window.aistudio) {
         onResetKey();
       }
@@ -101,7 +111,7 @@ const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeEx
             </div>
             <div>
               <h3 className="text-base sm:text-lg font-black text-slate-900 leading-tight">AI 戰略指揮官</h3>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Powered by Gemini 3</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gemini Strategic Analysis</p>
             </div>
           </div>
           
@@ -118,9 +128,14 @@ const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeEx
         {errorDetail && (
           <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-2xl flex gap-3 items-start animate-in fade-in duration-300">
             <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs font-black text-rose-600 mb-1">診斷發生問題</p>
+            <div className="flex-1">
+              <p className="text-xs font-black text-rose-600 mb-1">診斷系統連線異常</p>
               <p className="text-[11px] font-bold text-rose-500 leading-relaxed">{errorDetail}</p>
+              <div className="mt-3 p-2 bg-white/50 rounded-lg border border-rose-100">
+                <p className="text-[9px] text-rose-400 font-black uppercase tracking-tighter italic">
+                  重要：變更 Vercel 環境變數後，必須 Redeploy (重新部署) 才會生效。
+                </p>
+              </div>
             </div>
           </div>
         )}
@@ -131,15 +146,15 @@ const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeEx
               <MessageSquareText className="w-8 h-8 text-rose-300" />
             </div>
             <p className="text-sm font-bold text-slate-400 max-w-[200px] mx-auto leading-relaxed">
-              點擊上方按鈕，AI 將根據您的數據進行深度戰略分析。
+              點擊按鈕，AI 將根據目前的負債比與現金流進行壓力測試診斷。
             </p>
           </div>
         )}
 
         {loading && (
-          <div className="py-12 flex flex-col items-center justify-center animate-pulse">
+          <div className="py-12 flex flex-col items-center justify-center">
             <Loader2 className="w-10 h-10 text-rose-500 animate-spin mb-4" />
-            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">正在分析財務流向與風險水位...</p>
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest animate-pulse">正在精算數據與戰略空間...</p>
           </div>
         )}
 
@@ -148,7 +163,7 @@ const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeEx
             <div className="bg-rose-50/30 border border-rose-100 rounded-2xl p-5 text-slate-700">
               <div className="prose prose-sm max-w-none text-xs leading-relaxed font-bold">
                 {report.split('\n').map((line, i) => (
-                  <p key={i} className={line.startsWith('#') ? 'text-sm font-black text-rose-600 mt-4 mb-2' : 'mb-1'}>
+                  <p key={i} className={line.startsWith('#') || line.includes(':') ? 'text-sm font-black text-rose-600 mt-3 mb-1' : 'mb-1'}>
                     {line.replace(/[#*]/g, '')}
                   </p>
                 ))}
@@ -158,11 +173,11 @@ const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeEx
             <div className="grid grid-cols-3 gap-2">
               <div className="bg-emerald-50 p-2 rounded-lg border border-emerald-100 flex flex-col items-center text-center">
                 <Rocket className="w-3.5 h-3.5 text-emerald-500 mb-1" />
-                <span className="text-[9px] font-black text-emerald-600">優化效率</span>
+                <span className="text-[9px] font-black text-emerald-600">效率優化</span>
               </div>
               <div className="bg-amber-50 p-2 rounded-lg border border-amber-100 flex flex-col items-center text-center">
                 <ShieldAlert className="w-3.5 h-3.5 text-amber-500 mb-1" />
-                <span className="text-[9px] font-black text-amber-600">風險覆蓋</span>
+                <span className="text-[9px] font-black text-amber-600">風險控制</span>
               </div>
               <div className="bg-indigo-50 p-2 rounded-lg border border-indigo-100 flex flex-col items-center text-center">
                 <TrendingUp className="w-3.5 h-3.5 text-indigo-500 mb-1" />
