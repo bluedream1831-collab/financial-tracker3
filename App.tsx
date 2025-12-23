@@ -19,6 +19,7 @@ import SummaryCards from './components/SummaryCards';
 import FinancialCharts from './components/FinancialCharts';
 import StressTestSection from './components/StressTestSection';
 import AssetLiabilityList from './components/AssetLiabilityList';
+import AIDiagnosis from './components/AIDiagnosis';
 
 const STORAGE_KEY = 'FINANCIAL_FREOM_DASHBOARD_DATA_V2';
 
@@ -69,7 +70,6 @@ const App: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 1. 初始化讀取
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -84,7 +84,6 @@ const App: React.FC = () => {
     setIsLoaded(true);
   }, []);
 
-  // 2. 存檔核心函數
   const performSave = () => {
     setIsSaving(true);
     const now = new Date().toLocaleTimeString('zh-TW', { hour12: false });
@@ -98,17 +97,15 @@ const App: React.FC = () => {
     }, 800);
   };
 
-  // 3. 自動存檔機制 (Debounce)
   useEffect(() => {
     if (!isLoaded) return;
     setHasUnsavedChanges(true);
     const timeout = setTimeout(() => {
       performSave();
-    }, 3000); // 延長到 3 秒自動存檔
+    }, 3000);
     return () => clearTimeout(timeout);
   }, [assets, liabilities, incomeExpense, isLoaded]);
 
-  // 4. 鍵盤快捷鍵 (Ctrl/Cmd + S)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -251,7 +248,6 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4">
-            {/* 存檔狀態指示燈 */}
             <div className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all duration-300 ${isSaving ? 'bg-amber-50 border-amber-100' : 'bg-slate-50 border-slate-100'}`}>
               {isSaving ? (
                 <>
@@ -331,7 +327,14 @@ const App: React.FC = () => {
           </div>
 
           <div className="xl:col-span-4 space-y-4 sm:space-y-6">
-            {/* 戰略參數區塊 */}
+            <AIDiagnosis 
+              assets={assets}
+              liabilities={liabilities}
+              incomeExpense={incomeExpense}
+              stress={stress}
+              financialData={financialData}
+            />
+
             <div className="bg-gradient-to-br from-[#4c0519] to-[#831843] rounded-[1.5rem] sm:rounded-[2rem] p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
               <h3 className="text-base sm:text-lg font-black mb-6 flex items-center gap-3">
                 <Settings2 className="w-5 h-5 text-rose-300" /> 戰略參數
