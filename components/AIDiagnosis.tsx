@@ -18,14 +18,15 @@ const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeEx
   const [report, setReport] = useState<string | null>(null);
 
   const generateDiagnosis = async () => {
-    // 先行檢查 API KEY
-    if (!process.env.API_KEY) {
-      setReport("尚未偵測到 API Key。請在 Vercel 後台的 Settings -> Environment Variables 中新增 API_KEY。");
+    // 檢查 API KEY 是否存在
+    if (!process.env.API_KEY || process.env.API_KEY === 'undefined') {
+      setReport("尚未偵測到環境變數 API_KEY。請在 Vercel Settings -> Environment Variables 設定後重新部署。");
       return;
     }
 
     setLoading(true);
     try {
+      // 根據規範，每次呼叫前實例化
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
       const prompt = `
@@ -55,20 +56,28 @@ const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeEx
         請使用繁體中文，格式請多用列表，避免冗長段落。
       `;
 
+      // 使用 gemini-flash-latest 以獲得最佳相容性
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-flash-latest',
         contents: prompt,
       });
 
-      setReport(response.text || "無法生成報告，請稍後再試。");
+      setReport(response.text || "報告生成為空，請稍後重試。");
     } catch (error: any) {
-      console.error(error);
+      console.error("Gemini API Error:", error);
       const errorMsg = error.message || "";
-      if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("API_KEY_INVALID")) {
-        setReport("金鑰已失效。如果您是本地測試，請點擊右上方金鑰圖示；如果是部署環境，請檢查 Vercel 的 API_KEY 設定。");
-        if (window.aistudio) onResetKey();
+      
+      if (errorMsg.includes("403") || errorMsg.includes("permission") || errorMsg.includes("API_KEY_INVALID")) {
+        setReport("API 金鑰權限不足或無效。請確認 Vercel 的 API_KEY 是否正確（無引號、無空格），並確認該金鑰已在 Google AI Studio 啟用。");
+      } else if (errorMsg.includes("404") || errorMsg.includes("not found")) {
+        setReport("找不到 AI 模型或金鑰設定有誤。請檢查 Vercel 設定並點擊 Redeploy。");
       } else {
-        setReport("連線失敗，請檢查網路狀況或 API 額度限制。");
+        setReport(`連線失敗: ${errorMsg.slice(0, 50)}... 請檢查網路或 API 額度。`);
+      }
+
+      // 如果支援 aistudio 工具，則調用重置
+      if (window.aistudio) {
+        onResetKey();
       }
     } finally {
       setLoading(false);
@@ -77,7 +86,6 @@ const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeEx
 
   return (
     <div className="bg-white rounded-[1.5rem] sm:rounded-[2rem] border border-orange-100 shadow-xl overflow-hidden relative group">
-      {/* 裝飾性流光效果 */}
       <div className="absolute inset-0 bg-gradient-to-r from-rose-50/0 via-rose-50/30 to-rose-50/0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
       
       <div className="p-6 sm:p-8">
@@ -88,7 +96,7 @@ const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeEx
             </div>
             <div>
               <h3 className="text-base sm:text-lg font-black text-slate-900 leading-tight">AI 戰略指揮官</h3>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Strategic AI Advisor</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Powered by Gemini Flash</p>
             </div>
           </div>
           
@@ -108,7 +116,7 @@ const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeEx
               <MessageSquareText className="w-8 h-8 text-rose-300" />
             </div>
             <p className="text-sm font-bold text-slate-400 max-w-[200px] mx-auto leading-relaxed">
-              點擊上方按鈕，AI 將根據您的數據進行深度戰略分析。
+              點擊上方按鈕，AI 將進行深度戰略分析。
             </p>
           </div>
         )}
