@@ -10,16 +10,23 @@ interface AIDiagnosisProps {
   incomeExpense: IncomeExpense;
   stress: StressTestState;
   financialData: any;
+  onResetKey: () => Promise<void>;
 }
 
-const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeExpense, stress, financialData }) => {
+const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeExpense, stress, financialData, onResetKey }) => {
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<string | null>(null);
 
   const generateDiagnosis = async () => {
+    // 先行檢查 API KEY
+    if (!process.env.API_KEY) {
+      setReport("尚未偵測到 API Key。請在 Vercel 後台的 Settings -> Environment Variables 中新增 API_KEY。");
+      return;
+    }
+
     setLoading(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
       const prompt = `
         你是一位頂級財富管理專家，擅長「以配息支撐槓桿、以槓桿創造資產」的戰略。
@@ -41,7 +48,7 @@ const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeEx
         - 股災模擬: -${stress.marketCrash * 100}%
         - 升息模擬: +${stress.interestHike * 100}%
 
-        請用專業、簡潔且具備戰略眼光的語氣給予建議。內容需包含：
+        請用專業、簡潔且具備戰略眼長的語氣給予建議。內容需包含：
         1. 現況診斷 (目前的槓桿效力與安全性)
         2. 風險預警 (針對當前壓力測試下的維持率或現金流提出警告)
         3. 戰略行動 (給予 2-3 個具體的優化方向)
@@ -54,9 +61,15 @@ const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeEx
       });
 
       setReport(response.text || "無法生成報告，請稍後再試。");
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setReport("連線失敗，請檢查 API Key 或網路狀況。");
+      const errorMsg = error.message || "";
+      if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("API_KEY_INVALID")) {
+        setReport("金鑰已失效。如果您是本地測試，請點擊右上方金鑰圖示；如果是部署環境，請檢查 Vercel 的 API_KEY 設定。");
+        if (window.aistudio) onResetKey();
+      } else {
+        setReport("連線失敗，請檢查網路狀況或 API 額度限制。");
+      }
     } finally {
       setLoading(false);
     }

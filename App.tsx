@@ -12,7 +12,8 @@ import {
   Save,
   CheckCircle2,
   Loader2,
-  Clock
+  Clock,
+  Key
 } from 'lucide-react';
 import { Asset, Liability, IncomeExpense, StressTestState } from './types';
 import SummaryCards from './components/SummaryCards';
@@ -22,6 +23,19 @@ import AssetLiabilityList from './components/AssetLiabilityList';
 import AIDiagnosis from './components/AIDiagnosis';
 
 const STORAGE_KEY = 'FINANCIAL_FREOM_DASHBOARD_DATA_V2';
+
+// 宣告 window.aistudio 類型以避免編譯錯誤
+declare global {
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
+
+  interface Window {
+    // Fix: Remove readonly modifier to match existing declarations if any
+    aistudio?: AIStudio;
+  }
+}
 
 const initialAssets: Asset[] = [
   { id: 'p1', name: '保單 A (法巴年金)', type: 'investment', marketValue: 477000, cost: 500000, annualDividend: 0, realizedDividend: 12000 },
@@ -59,6 +73,7 @@ const App: React.FC = () => {
   const [lastSavedTime, setLastSavedTime] = useState<string>('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showLiquidityDetail, setShowLiquidityDetail] = useState(false);
+  const [hasKey, setHasKey] = useState(true);
   
   const [assets, setAssets] = useState<Asset[]>(initialAssets);
   const [liabilities, setLiabilities] = useState<Liability[]>(initialLiabilities);
@@ -71,6 +86,17 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    const checkKey = async () => {
+      if (window.aistudio) {
+        const selected = await window.aistudio.hasSelectedApiKey();
+        setHasKey(selected);
+      } else {
+        // 如果沒有 aistudio 工具，檢查 process.env.API_KEY 是否存在
+        setHasKey(!!process.env.API_KEY);
+      }
+    };
+    checkKey();
+
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
@@ -83,6 +109,13 @@ const App: React.FC = () => {
     }
     setIsLoaded(true);
   }, []);
+
+  const handleOpenKeyDialog = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      setHasKey(true);
+    }
+  };
 
   const performSave = () => {
     setIsSaving(true);
@@ -274,6 +307,17 @@ const App: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-1 sm:gap-2">
+              {window.aistudio && (
+                <button 
+                  onClick={handleOpenKeyDialog}
+                  className={`p-2 sm:px-3 py-2 text-[10px] font-black transition-all border rounded-lg sm:rounded-xl flex items-center gap-1.5 ${hasKey ? 'bg-white text-slate-600 border-slate-100 hover:text-rose-600' : 'bg-rose-50 text-rose-600 border-rose-200 animate-pulse'}`}
+                  title="設定 AI 金鑰"
+                >
+                  <Key className="w-4 h-4" />
+                  <span className="hidden sm:inline">{hasKey ? 'AI 金鑰' : '設定金鑰'}</span>
+                </button>
+              )}
+
               <button 
                 onClick={performSave} 
                 className="flex items-center gap-1.5 p-2 sm:px-4 py-2 text-[10px] font-black text-white bg-rose-500 hover:bg-rose-600 rounded-lg sm:rounded-xl transition-all active:scale-90 shadow-lg shadow-rose-200"
@@ -333,6 +377,7 @@ const App: React.FC = () => {
               incomeExpense={incomeExpense}
               stress={stress}
               financialData={financialData}
+              onResetKey={handleOpenKeyDialog}
             />
 
             <div className="bg-gradient-to-br from-[#4c0519] to-[#831843] rounded-[1.5rem] sm:rounded-[2rem] p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
