@@ -92,7 +92,7 @@ const App: React.FC = () => {
         setHasKey(selected);
       } else {
         // 如果沒有 aistudio 工具，檢查 process.env.API_KEY 是否存在
-        setHasKey(!!process.env.API_KEY);
+        setHasKey(!!process.env.NEXT_PUBLIC_GEMINI_API_KEY);
       }
     };
     checkKey();
