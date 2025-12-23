@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Sparkles, BrainCircuit, Loader2, MessageSquareText, ShieldAlert, Rocket, TrendingUp } from 'lucide-react';
+import { Sparkles, BrainCircuit, Loader2, MessageSquareText, ShieldAlert, Rocket, TrendingUp, AlertCircle } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { Asset, Liability, IncomeExpense, StressTestState } from '../types';
 
@@ -16,18 +16,22 @@ interface AIDiagnosisProps {
 const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeExpense, stress, financialData, onResetKey }) => {
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<string | null>(null);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
 
   const generateDiagnosis = async () => {
-    // 檢查 API KEY 是否存在
-    if (!process.env.API_KEY || process.env.API_KEY === 'undefined') {
-      setReport("尚未偵測到環境變數 API_KEY。請在 Vercel Settings -> Environment Variables 設定後重新部署。");
+    setErrorDetail(null);
+    
+    // 檢查 API KEY 是否存在且不是字串 "undefined"
+    const apiKey = process.env.API_KEY;
+    if (!apiKey || apiKey === 'undefined' || apiKey === '') {
+      setReport("尚未偵測到 API_KEY。");
+      setErrorDetail("請在 Vercel 後台 Settings > Environment Variables 新增 API_KEY，並務必重新部署 (Redeploy)。");
       return;
     }
 
     setLoading(true);
     try {
-      // 根據規範，每次呼叫前實例化
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: apiKey });
       
       const prompt = `
         你是一位頂級財富管理專家，擅長「以配息支撐槓桿、以槓桿創造資產」的戰略。
@@ -56,26 +60,27 @@ const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeEx
         請使用繁體中文，格式請多用列表，避免冗長段落。
       `;
 
-      // 使用 gemini-flash-latest 以獲得最佳相容性
+      // 使用 gemini-3-flash-preview 作為預設穩定模型
       const response = await ai.models.generateContent({
-        model: 'gemini-flash-latest',
+        model: 'gemini-3-flash-preview',
         contents: prompt,
       });
 
-      setReport(response.text || "報告生成為空，請稍後重試。");
+      setReport(response.text || "報告內容為空，請稍後重試。");
     } catch (error: any) {
-      console.error("Gemini API Error:", error);
-      const errorMsg = error.message || "";
+      console.error("Gemini API Full Error:", error);
+      const msg = error.message || String(error);
       
-      if (errorMsg.includes("403") || errorMsg.includes("permission") || errorMsg.includes("API_KEY_INVALID")) {
-        setReport("API 金鑰權限不足或無效。請確認 Vercel 的 API_KEY 是否正確（無引號、無空格），並確認該金鑰已在 Google AI Studio 啟用。");
-      } else if (errorMsg.includes("404") || errorMsg.includes("not found")) {
-        setReport("找不到 AI 模型或金鑰設定有誤。請檢查 Vercel 設定並點擊 Redeploy。");
+      setReport("AI 診斷失敗");
+      
+      if (msg.includes("API_KEY_INVALID") || msg.includes("403") || msg.includes("401")) {
+        setErrorDetail("API Key 無效或權限遭拒。請確認金鑰字串正確（開頭通常為 AIza...），且沒有包含多餘的引號或空白。");
+      } else if (msg.includes("model not found") || msg.includes("404")) {
+        setErrorDetail("找不到指定模型。這可能是因為您的金鑰所在區域尚不支援此模型。");
       } else {
-        setReport(`連線失敗: ${errorMsg.slice(0, 50)}... 請檢查網路或 API 額度。`);
+        setErrorDetail(`具體錯誤：${msg.slice(0, 100)}`);
       }
 
-      // 如果支援 aistudio 工具，則調用重置
       if (window.aistudio) {
         onResetKey();
       }
@@ -96,7 +101,7 @@ const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeEx
             </div>
             <div>
               <h3 className="text-base sm:text-lg font-black text-slate-900 leading-tight">AI 戰略指揮官</h3>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Powered by Gemini Flash</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Powered by Gemini 3</p>
             </div>
           </div>
           
@@ -110,13 +115,23 @@ const AIDiagnosis: React.FC<AIDiagnosisProps> = ({ assets, liabilities, incomeEx
           </button>
         </div>
 
-        {!report && !loading && (
+        {errorDetail && (
+          <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-2xl flex gap-3 items-start animate-in fade-in duration-300">
+            <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs font-black text-rose-600 mb-1">診斷發生問題</p>
+              <p className="text-[11px] font-bold text-rose-500 leading-relaxed">{errorDetail}</p>
+            </div>
+          </div>
+        )}
+
+        {!report && !loading && !errorDetail && (
           <div className="py-10 text-center">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-rose-50 rounded-full mb-4">
               <MessageSquareText className="w-8 h-8 text-rose-300" />
             </div>
             <p className="text-sm font-bold text-slate-400 max-w-[200px] mx-auto leading-relaxed">
-              點擊上方按鈕，AI 將進行深度戰略分析。
+              點擊上方按鈕，AI 將根據您的數據進行深度戰略分析。
             </p>
           </div>
         )}
